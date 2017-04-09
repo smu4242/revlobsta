@@ -3,15 +3,16 @@
 </head>
 
   <body>
-
-      Enter Revlo Key
-      (<a target="blank" href="https://www.revlo.co/settings/api">https://www.revlo.co/settings/api</a>): <br>
-      <input name="revlokey" type="password" id="revlokey" class=""/>
-      <input type="submit" id="revlosubmit" onClick="handleRevloSubmit()"> Start </input>
-
-    Latest hat redeem:
-    <div id="hat">...loading revlo hats...</div>
+    Enter Revlo Key
+    (<a target="blank" href="https://www.revlo.co/settings/api">https://www.revlo.co/settings/api</a>, key will be saved in browser): <br>
+    <input name="revlokey" type="password" id="revlokey" class=""/>
+    <input type="submit" value="Start" id="revlosubmit" onClick="handleRevloSubmit()"></input>
+    <br>
+    <h1>Rewards (just fyi lol)</h1>
     <div id="rewards"> ... loading rewards...</div>
+    <br>
+    <h1>Latest redeems</h1>:
+    <div id="hat">...loading redeems...</div>
   </body>
 
   <script src='lodash.core.min.js'></script>
@@ -26,16 +27,27 @@
       alert("THIS WILL PROBABLY NOT WORK :(");
     }
 
+    function arrayByRewardId(rewards) {
+      var result = {};
+      _.map(rewards, function(r) {
+        result[r.reward_id] = r;
+      });
+      return result;
+    }
+
     function onGetRewards () {
       var json = this.responseText;
       // console.log("response json:", json);
       var obj = JSON.parse(json);
       console.log("rewards response:", obj);
-      var rewards = obj.rewards;
-      var rewardsHtml = _.map(rewards, function(r) {
-        return "<div><br>id:"+ r.reward_id + "; title: '"+ r.title + "'; description: '"+ r.description +"'<br></div>";
+      window.rewards = arrayByRewardId(obj.rewards);
+      var rewardsHtml = _.map(window.rewards, function(r) {
+        return "<div><br>id:"+ r.reward_id + "; title: '"+ r.title + "'; command: '"+ r.bot_command +"'<br></div>";
       }).join();
-      document.getElementById("rewards").innerHTML = "<div>Look for your hat: <br>" + rewardsHtml + "</div>";
+      document.getElementById("rewards").innerHTML = "<div><br>" + rewardsHtml + "</div>";
+
+      // only get redemeption after we have the rewards:
+      getRedemptions();
     }
 
     function formatDate(d) {
@@ -48,28 +60,53 @@
       return " " + hr + ":" + min + " " + ampm;
     }
 
+    function bucketsById(redemptions) {
+      var allBuckets = {};
+      _.map(redemptions, function(r) {
+        var bucket = allBuckets[r.reward_id] || [];
+        bucket.push(r);
+        allBuckets[r.reward_id] = bucket;
+      });
+      return allBuckets;
+    }
+
+    function formatRedemption(r) {
+      console.info("REDEMP:", r);
+      var reward = window.rewards[r.reward_id];
+      console.info("reward:", reward);
+      return "<br>" + reward.bot_command + "'s latest redeem started at: " + formatDate(new Date(r.created_at)) + "<br>";
+    }
+
     function onGetRedemptions () {
       var json = this.responseText;
       // console.log("onGetRedemptions json:", json);
       var obj = JSON.parse(json);
       console.log("onGetRedemptions response:", obj);
       var allRedemptions = obj.redemptions;
-      var hatRedemptions = _.filter(allRedemptions, function(r) {
-        return r.reward_id === rewardId;
+      var buckets = bucketsById(allRedemptions);
+      console.info("buckets: ", buckets);
+      // var hatRedemptions = _.filter(allRedemptions, function(r) {
+      //   return r.reward_id === rewardId;
+      // });
+      // console.log("onGetRedemptions hat redemptions:", hatRedemptions);
+      // if (hatRedemptions.length === 0) {
+      //   console.info("No hat redemptions!!!");
+      // }
+      var latests = _.map(buckets, function(b){
+        return b[0];
       });
-      console.log("onGetRedemptions hat redemptions:", hatRedemptions);
-      if (hatRedemptions.length === 0) {
-        console.info("No hat redemptions!!!");
-      }
-      var latest = hatRedemptions[0];
-      var redemptionStartDate = new Date(latest.created_at);
-      var redemptionEndDate = new Date(latest.created_at);
-      redemptionEndDate.setMinutes(redemptionEndDate.getMinutes() + HAT_DURATION_MINUTES);
-      console.info("hat start date: ", redemptionStartDate, "\nhat end date:   ", redemptionEndDate);
-      document.getElementById("hat").innerHTML = "<div>Start: "
-        + formatDate(redemptionStartDate) + "<br>"
-        + "End  : " + formatDate(redemptionEndDate) +
-        "</div>";
+      // var redemptionEndDate = new Date(redemption.created_at);
+      // redemptionEndDate.setMinutes(redemptionEndDate.getMinutes() + HAT_DURATION_MINUTES);
+      // var startDates = _.map(latests, function(redemption){
+      //   return new Date(redemption.created_at);
+      // });
+      // var redemptionEndDate = new Date(latest.created_at);
+      // redemptionEndDate.setMinutes(redemptionEndDate.getMinutes() + HAT_DURATION_MINUTES);
+      // console.info("start date:   ", startDates);
+      document.getElementById("hat").innerHTML = "<div>"
+        + _.map(latests, formatRedemption) + "<br>"
+        + "</div>";
+
     }
 
     function getRewards() {
@@ -94,23 +131,33 @@
       oReq.send();
     }
 
-    function handleRevloSubmit() {
-      console.info("AAAAA", this);
-      // event.preventDefault();
-      var value = document.getElementById('revlokey').value;
+    function handleRevloSubmitWithValue(value) {
       console.info("revlo: " + value);
       if (value != "" && value != null) {
+        localStorage.setItem('revlokey', value);
         window.key = value;
         getRewards();
-        getRedemptions();
 
         window.setTimeout(function() {
-          console.info("reloading...");
+          // console.info("reloading...");
           // window.location.reload(true);
         }, 1000*5);
 
       }
     }
+
+    function handleRevloSubmit() {
+      console.info("AAAAA", this);
+      // event.preventDefault();
+      var value = document.getElementById('revlokey').value;
+      handleRevloSubmitWithValue(value);
+    }
+
+    var oldRevloKey = localStorage.getItem('revlokey');
+    if (oldRevloKey) {
+      document.getElementById('revlokey').value = oldRevloKey;
+    }
+    handleRevloSubmitWithValue(oldRevloKey);
 
   </script>
 </html>
