@@ -1,0 +1,116 @@
+<html>
+<head>
+</head>
+
+  <body>
+
+      Enter Revlo Key
+      (<a target="blank" href="https://www.revlo.co/settings/api">https://www.revlo.co/settings/api</a>): <br>
+      <input name="revlokey" type="password" id="revlokey" class=""/>
+      <input type="submit" id="revlosubmit" onClick="handleRevloSubmit()"> Start </input>
+
+    Latest hat redeem:
+    <div id="hat">...loading revlo hats...</div>
+    <div id="rewards"> ... loading rewards...</div>
+  </body>
+
+  <script src='lodash.core.min.js'></script>
+  <script>
+    window.key = null;
+    var rewardId = 699561;
+    var HAT_DURATION_MINUTES = 15;
+    var xhr = new XMLHttpRequest();
+    var shouldWork = "withCredentials" in xhr;
+    xhr = null;
+    if (!shouldWork) {
+      alert("THIS WILL PROBABLY NOT WORK :(");
+    }
+
+    function onGetRewards () {
+      var json = this.responseText;
+      // console.log("response json:", json);
+      var obj = JSON.parse(json);
+      console.log("rewards response:", obj);
+      var rewards = obj.rewards;
+      var rewardsHtml = _.map(rewards, function(r) {
+        return "<div><br>id:"+ r.reward_id + "; title: '"+ r.title + "'; description: '"+ r.description +"'<br></div>";
+      }).join();
+      document.getElementById("rewards").innerHTML = "<div>Look for your hat: <br>" + rewardsHtml + "</div>";
+    }
+
+    function formatDate(d) {
+      var hr = d.getHours();
+      var min = d.getMinutes();
+      if (min < 10) {
+          min = "0" + min;
+      }
+      var ampm = hr < 12 ? "am" : "pm";
+      return " " + hr + ":" + min + " " + ampm;
+    }
+
+    function onGetRedemptions () {
+      var json = this.responseText;
+      // console.log("onGetRedemptions json:", json);
+      var obj = JSON.parse(json);
+      console.log("onGetRedemptions response:", obj);
+      var allRedemptions = obj.redemptions;
+      var hatRedemptions = _.filter(allRedemptions, function(r) {
+        return r.reward_id === rewardId;
+      });
+      console.log("onGetRedemptions hat redemptions:", hatRedemptions);
+      if (hatRedemptions.length === 0) {
+        console.info("No hat redemptions!!!");
+      }
+      var latest = hatRedemptions[0];
+      var redemptionStartDate = new Date(latest.created_at);
+      var redemptionEndDate = new Date(latest.created_at);
+      redemptionEndDate.setMinutes(redemptionEndDate.getMinutes() + HAT_DURATION_MINUTES);
+      console.info("hat start date: ", redemptionStartDate, "\nhat end date:   ", redemptionEndDate);
+      document.getElementById("hat").innerHTML = "<div>Start: "
+        + formatDate(redemptionStartDate) + "<br>"
+        + "End  : " + formatDate(redemptionEndDate) +
+        "</div>";
+    }
+
+    function getRewards() {
+      var oReq = new XMLHttpRequest();
+      oReq.addEventListener("load", onGetRewards);
+      oReq.open("GET", "https://api.revlo.co/1/rewards?page=1");
+      oReq.setRequestHeader("x-api-key", key);
+      oReq.setRequestHeader("Accept", "application/json");
+      // oReq.setRequestHeader("Host", "api.revlo.co:443");
+      // oReq.setRequestHeader("Connection", "close");
+      oReq.send();
+    }
+
+    function getRedemptions() {
+      var oReq = new XMLHttpRequest();
+      oReq.addEventListener("load", onGetRedemptions);
+      oReq.open("GET", "https://api.revlo.co/1/redemptions?page=1");
+      oReq.setRequestHeader("x-api-key", key);
+      oReq.setRequestHeader("Accept", "application/json");
+      // oReq.setRequestHeader("Host", "api.revlo.co:443");
+      // oReq.setRequestHeader("Connection", "close");
+      oReq.send();
+    }
+
+    function handleRevloSubmit() {
+      console.info("AAAAA", this);
+      // event.preventDefault();
+      var value = document.getElementById('revlokey').value;
+      console.info("revlo: " + value);
+      if (value != "" && value != null) {
+        window.key = value;
+        getRewards();
+        getRedemptions();
+
+        window.setTimeout(function() {
+          console.info("reloading...");
+          // window.location.reload(true);
+        }, 1000*5);
+
+      }
+    }
+
+  </script>
+</html>
