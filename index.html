@@ -5,21 +5,19 @@
   <body>
     Enter Revlo Key
     (<a target="blank" href="https://www.revlo.co/settings/api">https://www.revlo.co/settings/api</a>, key will be saved in browser): <br>
-    <input name="revlokey" type="password" id="revlokey" class=""/>
+    <input name="revlokey" type="password" id="revlokey" class="" size="32"/>
     <input type="submit" value="Start" id="revlosubmit" onClick="handleRevloSubmit()"></input>
     <br>
-    <h1>Rewards (just fyi lol)</h1>
+    <h1>Rewards: Configure Timers</h1>
     <div id="rewards"> ... loading rewards...</div>
     <br>
-    <h1>Latest redeems</h1>:
+    <h1>Latest Redemptions</h1>
     <div id="hat">...loading redeems...</div>
   </body>
 
   <script src='lodash.core.min.js'></script>
   <script>
     window.key = null;
-    var rewardId = 699561;
-    var HAT_DURATION_MINUTES = 15;
     var xhr = new XMLHttpRequest();
     var shouldWork = "withCredentials" in xhr;
     xhr = null;
@@ -35,19 +33,49 @@
       return result;
     }
 
+    function setDuration(id, value) {
+      localStorage.setItem("rewardDuration_" + id, value);
+    }
+
+    function getDuration(id) {
+      return new Number(localStorage.getItem("rewardDuration_" + id)  || 15);
+    }
+
+    function handleMinuteClick(event, id, up) {
+      if (up) {
+        setDuration(id, getDuration(id) + 1);
+      } else {
+        setDuration(id, getDuration(id) - 1);
+      }
+      rerenderReward(id);
+      renderRedemptions();
+    }
+
     function onGetRewards () {
       var json = this.responseText;
-      // console.log("response json:", json);
       var obj = JSON.parse(json);
       console.log("rewards response:", obj);
       window.rewards = arrayByRewardId(obj.rewards);
-      var rewardsHtml = _.map(window.rewards, function(r) {
-        return "<div><br>id:"+ r.reward_id + "; title: '"+ r.title + "'; command: '"+ r.bot_command +"'<br></div>";
-      }).join();
-      document.getElementById("rewards").innerHTML = "<div><br>" + rewardsHtml + "</div>";
-
+      renderRewards();
       // only get redemeption after we have the rewards:
       getRedemptions();
+    }
+
+    function rerenderReward(id) {
+      document.getElementById("reward_" + id).value = getDuration(id);
+    }
+
+    function renderRewards() {
+      var rewardsHtml = _.map(window.rewards, function(r) {
+        var minutes = getDuration(r.reward_id);
+        return "<div>id:"+ r.reward_id + "; title: '"+ r.title + "'; command: '"+ r.bot_command +"'<br>"
+          + "Minutes for this reward: "
+          + "<input type='submit' value='"+minutes+"' id='reward_" + r.reward_id + "'></input> "
+          + "<input type='button' value=' + ' onclick='handleMinuteClick(event,"+r.reward_id+",true)'></input>"
+          + "<input type='button' value=' - ' onclick='handleMinuteClick(event,"+r.reward_id+",false)'></input>"
+          + "</div>";
+      }).join();
+      document.getElementById("rewards").innerHTML = "<div><br>" + rewardsHtml + "</div>";
     }
 
     function formatDate(d) {
@@ -70,21 +98,43 @@
       return allBuckets;
     }
 
+    function padLeft(nr, n){
+        return Array(n-String(nr).length+1).join('0')+nr;
+    }
+
+    function formatMinutesSeconds(time) {
+      if (time < 0) {
+        return "00:00";
+      }
+      var seconds = time % 60;
+      var minutes = (time - seconds) / 60;
+      return "" + padLeft(minutes,2) + ":" + padLeft(Math.round(seconds), 2);
+    }
+
     function formatRedemption(r) {
-      console.info("REDEMP:", r);
       var reward = window.rewards[r.reward_id];
-      console.info("reward:", reward);
-      return "<br>" + reward.bot_command + "'s latest redeem started at: " + formatDate(new Date(r.created_at)) + "<br>";
+      var secondsSinceStart = (new Date() - new Date(r.created_at)) / 1000;
+      var durationSeconds = getDuration(r.reward_id) * 60;
+      var secondsUntilEnd = durationSeconds - secondsSinceStart;
+      return "<br>" + reward.bot_command + "'s latest redeem started at: " + formatDate(new Date(r.created_at)) + "<br>"
+        + "seconds since last redeem: " + formatMinutesSeconds(secondsSinceStart) + "<br>"
+        + "seconds until end: " + formatMinutesSeconds(secondsUntilEnd) + "<br>";
     }
 
     function onGetRedemptions () {
       var json = this.responseText;
-      // console.log("onGetRedemptions json:", json);
       var obj = JSON.parse(json);
       console.log("onGetRedemptions response:", obj);
       var allRedemptions = obj.redemptions;
-      var buckets = bucketsById(allRedemptions);
-      console.info("buckets: ", buckets);
+      window.buckets = bucketsById(allRedemptions);
+      console.info("buckets: ", window.buckets);
+      renderRedemptions();
+    }
+
+    function renderRedemptions() {
+      if (! window.buckets) {
+        return;
+      }
       // var hatRedemptions = _.filter(allRedemptions, function(r) {
       //   return r.reward_id === rewardId;
       // });
@@ -92,7 +142,7 @@
       // if (hatRedemptions.length === 0) {
       //   console.info("No hat redemptions!!!");
       // }
-      var latests = _.map(buckets, function(b){
+      var latests = _.map(window.buckets, function(b){
         return b[0];
       });
       // var redemptionEndDate = new Date(redemption.created_at);
@@ -106,7 +156,6 @@
       document.getElementById("hat").innerHTML = "<div>"
         + _.map(latests, formatRedemption) + "<br>"
         + "</div>";
-
     }
 
     function getRewards() {
@@ -132,23 +181,15 @@
     }
 
     function handleRevloSubmitWithValue(value) {
-      console.info("revlo: " + value);
       if (value != "" && value != null) {
         localStorage.setItem('revlokey', value);
         window.key = value;
         getRewards();
 
-        window.setTimeout(function() {
-          // console.info("reloading...");
-          // window.location.reload(true);
-        }, 1000*5);
-
       }
     }
 
     function handleRevloSubmit() {
-      console.info("AAAAA", this);
-      // event.preventDefault();
       var value = document.getElementById('revlokey').value;
       handleRevloSubmitWithValue(value);
     }
@@ -158,6 +199,19 @@
       document.getElementById('revlokey').value = oldRevloKey;
     }
     handleRevloSubmitWithValue(oldRevloKey);
+
+    window.setInterval(function() {
+      console.info("reloading...");
+      // window.location.reload(true);
+      handleRevloSubmitWithValue(oldRevloKey)
+    }, 1000*10);
+
+
+    window.setInterval(function() {
+      console.info("rerendering...");
+      // window.location.reload(true);
+      renderRedemptions();
+    }, 1000*1);
 
   </script>
 </html>
