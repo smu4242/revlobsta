@@ -12,7 +12,7 @@
     <div id="rewards"> ... loading rewards...</div>
     <br>
     <h1>Latest Redemptions</h1>
-    <div id="hat">...loading redeems...</div>
+    <div id="hat">...loading redemptions...</div>
   </body>
 
   <script src='lodash.core.min.js'></script>
@@ -41,7 +41,7 @@
       return new Number(localStorage.getItem("rewardDuration_" + id)  || 15);
     }
 
-    function handleMinuteClick(event, id, up) {
+    function handlePlusMinusClick(event, id, up) {
       if (up) {
         setDuration(id, getDuration(id) + 1);
       } else {
@@ -71,8 +71,8 @@
         return "<div>id:"+ r.reward_id + "; title: '"+ r.title + "'; command: '"+ r.bot_command +"'<br>"
           + "Minutes for this reward: "
           + "<input type='submit' value='"+minutes+"' id='reward_" + r.reward_id + "'></input> "
-          + "<input type='button' value=' + ' onclick='handleMinuteClick(event,"+r.reward_id+",true)'></input>"
-          + "<input type='button' value=' - ' onclick='handleMinuteClick(event,"+r.reward_id+",false)'></input>"
+          + "<input type='button' value=' + ' onclick='handlePlusMinusClick(event,"+r.reward_id+",true)'></input>"
+          + "<input type='button' value=' - ' onclick='handlePlusMinusClick(event,"+r.reward_id+",false)'></input>"
           + "</div>";
       }).join();
       document.getElementById("rewards").innerHTML = "<div><br>" + rewardsHtml + "</div>";
@@ -99,7 +99,7 @@
     }
 
     function padLeft(nr, n){
-        return Array(n-String(nr).length+1).join('0')+nr;
+        return Array(Math.max(1, n-String(nr).length+1)).join('0')+nr;
     }
 
     function formatMinutesSeconds(time) {
@@ -111,14 +111,25 @@
       return "" + padLeft(minutes,2) + ":" + padLeft(Math.round(seconds), 2);
     }
 
+    function getSecondsSinceStart(r) {
+      return (new Date() - new Date(r.created_at)) / 1000;
+    }
+
+    function getSecondsUtilEnd(r) {
+      var durationSeconds = getDuration(r.reward_id) * 60;
+      var secondsUntilEnd = durationSeconds - getSecondsSinceStart(r);
+      return secondsUntilEnd;
+    }
+
     function formatRedemption(r) {
       var reward = window.rewards[r.reward_id];
-      var secondsSinceStart = (new Date() - new Date(r.created_at)) / 1000;
-      var durationSeconds = getDuration(r.reward_id) * 60;
-      var secondsUntilEnd = durationSeconds - secondsSinceStart;
+      var secondsSinceStart = getSecondsSinceStart(r);
+      var secondsUntilEnd = r.secondsUntilEnd || getSecondsUtilEnd(r);
+      var multiplier = r.multiplier;
       return "<br>" + reward.bot_command + "'s latest redeem started at: " + formatDate(new Date(r.created_at)) + "<br>"
         + "seconds since last redeem: " + formatMinutesSeconds(secondsSinceStart) + "<br>"
-        + "seconds until end: " + formatMinutesSeconds(secondsUntilEnd) + "<br>";
+        + "seconds until end: " + formatMinutesSeconds(secondsUntilEnd) + "<br>"
+        + "multiplier: " + multiplier + "<br>";
     }
 
     function onGetRedemptions () {
@@ -135,24 +146,34 @@
       if (! window.buckets) {
         return;
       }
-      // var hatRedemptions = _.filter(allRedemptions, function(r) {
-      //   return r.reward_id === rewardId;
-      // });
-      // console.log("onGetRedemptions hat redemptions:", hatRedemptions);
-      // if (hatRedemptions.length === 0) {
-      //   console.info("No hat redemptions!!!");
-      // }
-      var latests = _.map(window.buckets, function(b){
-        return b[0];
+      var latests = _.map(window.buckets, function(b) {
+        var len = b.length;
+        var i = len-1;
+        var ongoing = null;
+        var multiplier = 1;
+        var secondsUntilEnd = null;
+        var endTime = null;
+        while (i>=0) {
+          var bigEnoughHole = endTime ? (new Date(b[i].created_at) > endTime) : true;
+          if (!bigEnoughHole) {
+            endTime.setMinutes(endTime.getMinutes() + getDuration(b[i].reward_id));
+          } else {
+            secondsUntilEnd = getSecondsUtilEnd(b[i]);
+            if (bigEnoughHole) {
+              endTime = new Date();
+            }
+            ongoing = b[i];
+            endTime.setSeconds(endTime.getSeconds() + secondsUntilEnd);
+          }
+
+          i--;
+        }
+        var result = (ongoing || b[0]);
+        result.multiplier = multiplier;
+        result.secondsUntilEnd = (endTime - new Date()) / 1000;
+        return result;
       });
-      // var redemptionEndDate = new Date(redemption.created_at);
-      // redemptionEndDate.setMinutes(redemptionEndDate.getMinutes() + HAT_DURATION_MINUTES);
-      // var startDates = _.map(latests, function(redemption){
-      //   return new Date(redemption.created_at);
-      // });
-      // var redemptionEndDate = new Date(latest.created_at);
-      // redemptionEndDate.setMinutes(redemptionEndDate.getMinutes() + HAT_DURATION_MINUTES);
-      // console.info("start date:   ", startDates);
+
       document.getElementById("hat").innerHTML = "<div>"
         + _.map(latests, formatRedemption) + "<br>"
         + "</div>";
@@ -185,7 +206,6 @@
         localStorage.setItem('revlokey', value);
         window.key = value;
         getRewards();
-
       }
     }
 
